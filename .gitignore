@@ -1,0 +1,2 @@
+# Ignore all Matrix Market (.mtx) files
+*.mtx
