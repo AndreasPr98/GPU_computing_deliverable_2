@@ -1,0 +1,12 @@
+# Ignore Matrix Market coordinate format files (.mtx)
+*.mtx
+
+# Ignore common build and temporary files for GPU/C++ development
+# (Since the repo name suggests GPU computing, these are helpful additions)
+build/
+*.o
+*.obj
+*.out
+*.exe
+.vscode/
+.idea/
