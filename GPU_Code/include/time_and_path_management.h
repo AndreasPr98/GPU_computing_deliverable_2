@@ -1,9 +1,11 @@
-#ifndef TIME_MANAGEMENT_H
-#define TIME_MANAGEMENT_H
+#ifndef TIME_AND_PATH_MANAGEMENT_H
+#define TIME_AND_PATH_MANAGEMENT_H
 
 #include <sys/time.h>
 #include <stdio.h>
 #include <filesystem>
+#include <vector>
+#include <string>
 #include "utils.h"
 #include "parser.h"
 
@@ -17,11 +19,9 @@
         fflush(stdout);\
     } while (0);
 
-void COO_data_printing(const double* runs_time, int niter, 
-    const std::filesystem::directory_entry& entry, 
-    const COO& COO_matrix);
-void CSR_data_printing(const double* runs_time, int niter, 
-    const std::filesystem::directory_entry& entry, 
-    const CSR& CSR_matrix);
+bool handle_path_management(int argc, char* argv[], 
+                            const std::filesystem::path& base_path, 
+                            const std::filesystem::path& target_dir, 
+                            std::filesystem::directory_entry& out_entry);
 
 #endif

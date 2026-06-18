@@ -1,5 +1,5 @@
 #include "CPU_kernels.h"
-#include "time_management.h"
+#include "time_and_path_management.h"
 #include <omp.h>
 
 // COO operations

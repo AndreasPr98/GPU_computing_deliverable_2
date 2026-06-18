@@ -27,7 +27,7 @@ MAIN_SRC = SpMV.cu
 # 3. Math library
 LIBS = -lm -Xcompiler -fopenmp -lcusparse
 
-CPP_OBJECTS = $(OBJ_FOLDER)/time_management.o $(OBJ_FOLDER)/utils.o $(OBJ_FOLDER)/parser.o $(OBJ_FOLDER)/CPU_kernels.o
+CPP_OBJECTS = $(OBJ_FOLDER)/time_and_path_management.o $(OBJ_FOLDER)/utils.o $(OBJ_FOLDER)/parser.o $(OBJ_FOLDER)/CPU_kernels.o
 CU_OBJECTS = $(OBJ_FOLDER)/GPU_kernels.o
 OBJECTS = $(CPP_OBJECTS) $(CU_OBJECTS)
 DEPS = $(OBJECTS:.o=.d)

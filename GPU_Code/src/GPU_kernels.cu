@@ -1,5 +1,5 @@
 #include "GPU_kernels.h"
-#include "time_management.h"
+#include "time_and_path_management.h"
 #include <cuda_runtime.h>
 #include <cusparse.h>
 #include <cstdio>
