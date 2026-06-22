@@ -57,11 +57,19 @@ struct results_vectors_struct {
     float* CSR_results_cuda_cuSparse;
 };
 
+struct matrix_data {
+    int n_rows;
+    int n_cols;
+    unsigned long long nnz;
+};
 
+std::vector<int> stream_row_lengths_from_mtx(const std::filesystem::path& filepath, matrix_data& matrix_data);
+int find_optimal_ellpack_k(int num_rows, const std::vector<int>& row_lengths);
 
 double geometric_mean(const double *v, int len);
 double arithmetic_mean(const double *v, int len);
 double sigma_fn_sol(double *v, double mu, int len);
+
 double working_set_bytes(const COO& m);
 double spmv_flop_count(int nnz);
 double ns_to_gflops(double flop_count, double runtime_ns);

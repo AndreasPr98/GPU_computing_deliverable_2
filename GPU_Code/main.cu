@@ -39,47 +39,42 @@ int main(int argc, char *argv[]) {
     if (!handle_path_management(argc, argv, base_path, target_dir, entry)) {
         return 1;
     }
-
-    // Get matrix number
+    // Get matrix number (choose in alphabetical order)
     long requested_matrix_number = strtol(argv[1], nullptr, 10);
+
+    // Get some matrix data and the optimal K
+    matrix_data matrix_data;
+    std::vector<int> row_lengths = stream_row_lengths_from_mtx(entry.path(), matrix_data);
+    int K = find_optimal_ellpack_k(int num_rows, const std::vector<int>& row_lengths);
+
+    // Create the random vector for the SpMV operation
+    float* random_vector = (float*)malloc(matrix_data.n_cols * sizeof(float));
+    for(int i = 0; i < matrix_data.n_cols; i++){random_vector[i] = (rand() % 100) + 1;}    
 
     // Create the structs where all the results will be stored
     results_struct results;
     results_vectors_struct res_vector;
     results.name = entry.path().filename().c_str();
+
+    // Parse the matrix and get the HYB back
+    HybridMatrix HYB = parser_hybrid(entry.path(), K, double* &results.parsing_time_ns);
     
-    /*  Parse the matrix  */
+    /*  Parse the matrix and get some basic data */
     COO COO_matrix = parser(entry.path().string(), &results.parsing_time_ns);
     if(COO_matrix.row_indices == nullptr){return 1;}
     results.working_set_bytes = working_set_bytes(COO_matrix);
     const double spmv_flops = spmv_flop_count(COO_matrix.nnz);
 
-    // Create and randomize the random vector for the SpMV operation
-    float* random_vector = (float*)malloc(COO_matrix.n_cols * sizeof(float));
-    for(int i = 0; i < COO_matrix.n_cols; i++){random_vector[i] = (rand() % 100) + 1;}
     
-    // Create the vectors for the multiplication and result storing
-    res_vector.COO_results = (float*)calloc(COO_matrix.n_rows, sizeof(float));
-    res_vector.COO_parallel_results = (float*)calloc(COO_matrix.n_rows, sizeof(float));
-    res_vector.CSR_results = (float*)calloc(COO_matrix.n_rows, sizeof(float));
-    res_vector.CSR_parallel_results = (float*)calloc(COO_matrix.n_rows, sizeof(float));
-    if(!random_vector || !res_vector.COO_results || !res_vector.CSR_results || !res_vector.COO_parallel_results || !res_vector.CSR_parallel_results) {
-        fprintf(stderr, "random_vector || COO_results || COO_parallel_results || CSR_results || CSR_parallel_results allocation failed");
+    
+    // Compute the base result of the SpMV to compare to later computations
+    res_vector.base_results = (float*)calloc(CSR_matrix.n_rows, sizeof(float));
+    CSR_SpMV_serial(WARMUP, NITER, CSR_matrix, random_vector,  
+                        res_vector.base_results, runs_time);
+    if(!random_vector || !res_vector.base_results) {
+        fprintf(stderr, "random_vector || base_results allocation failed");
         return 1;
     }        
-
-    /*  COO analysis  */
-    // Do the COO matrix multiplication NITER times
-    COO_SpMV_serial(WARMUP, NITER, COO_matrix, random_vector,
-                        res_vector.COO_results, runs_time);          
-    results.coo_time_ns = arithmetic_mean(runs_time, NITER);
-    results.coo_gflops = ns_to_gflops(spmv_flops, results.coo_time_ns);
-        
-    // Parallel COO version
-    COO_SpMV_parallel(WARMUP, NITER, COO_matrix, random_vector,
-                        res_vector.COO_parallel_results, runs_time);
-    results.coo_parallel_time_ns = arithmetic_mean(runs_time, NITER);                    
-    results.coo_parallel_gflops = ns_to_gflops(spmv_flops, results.coo_parallel_time_ns);
         
     /*  CSR analysis  */
     // COO to CSR convertion

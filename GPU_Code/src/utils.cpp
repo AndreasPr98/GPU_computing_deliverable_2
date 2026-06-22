@@ -4,10 +4,157 @@
 #include <math.h>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
+#include <climits>
+#include <vector>
+#include <algorithm>
 #include <iomanip>
 #include <filesystem>
 #include <sys/time.h>
+
+std::vector<int> stream_row_lengths_from_mtx(const std::filesystem::path& filepath, matrix_data& m_data) {
+    std::ifstream file(filepath);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file " << filepath << std::endl;
+        return {};
+    }
+
+    std::string line;
+    bool is_symmetric = false;
+    
+    // 1. Parse banner line to find symmetry flag
+    if (std::getline(file, line)) {
+        std::transform(line.begin(), line.end(), line.begin(), ::tolower);
+        if (line.find("symmetric") != std::string::npos) {
+            is_symmetric = true;
+        }
+    }
+
+    // Skip remaining comments
+    while (std::getline(file, line)) {
+        if (line.empty() || line[0] == '%') {
+            continue; 
+        }
+        break; // Reached the geometry line
+    }
+
+    // 2. Read the Matrix Geometry
+    std::stringstream geometry_stream(line);
+    if (!(geometry_stream >> m_data.n_rows >> m_data.n_cols >> m_data.nnz)) {
+        std::cerr << "Error: Invalid Matrix Market geometry line." << std::endl;
+        return {};
+    }
+
+    // 3. Allocate row lengths vector
+    std::vector<int> row_lengths(m_data.n_rows, 0);
+
+    // 4. Stream and accumulate lengths
+    int row, col;
+    while (file >> row >> col) {
+        row--; col--; // Convert to 0-based index
+        
+        if (row >= 0 && row < m_data.n_rows) {
+            row_lengths[row]++;
+        }
+        
+        // Handle Symmetric mirroring mapping
+        if (is_symmetric && row != col) {
+            if (col >= 0 && col < m_data.n_rows) {
+                row_lengths[col]++;
+            }
+        }
+        
+        file.ignore(256, '\n'); 
+    }
+
+    return row_lengths;
+}
+
+int find_optimal_ellpack_k(int num_rows, const std::vector<int>& row_lengths) {
+    // 1. Find the maximum row length to bound search space
+    int max_row_len = 0;
+    for (int len : row_lengths) {
+        if (len > max_row_len) max_row_len = len;
+    }
+
+    // 2. Build a histogram of row lengths
+    std::vector<int> histogram(max_row_len + 1, 0);
+    for (int len : row_lengths) {
+        histogram[len]++;
+    }
+
+    // 3. Track best configuration
+    int best_K = 0;
+    unsigned long long min_total_bytes = ULLONG_MAX;
+
+    // Weights (in bytes)
+    const int bytes_per_element = 8; // 4 bytes for float value + 4 bytes for int col_idx
+    const int bytes_per_ptr     = 4; // 4 bytes for CSR row_ptr int
+
+    // 4. Evaluate memory footprint for every choice of K
+    for (int K = 0; K <= max_row_len; ++K) {
+        
+        unsigned long long total_ellpack_elements = 0;
+        unsigned long long total_csr_elements = 0;
+
+        // Calculate element distribution based on row length split profiles
+        for (int len = 0; len <= max_row_len; ++len) {
+            long long num_rows_with_this_len = histogram[len];
+            if (num_rows_with_this_len == 0) continue;
+
+            if (len <= K) {
+                // Entire row fits into ELLPACK
+                total_ellpack_elements += num_rows_with_this_len * len;
+            } else {
+                // Row is split: K elements to ELLPACK, remainder to CSR spillover
+                total_ellpack_elements += num_rows_with_this_len * K;
+                total_csr_elements += num_rows_with_this_len * (len - K);
+            }
+        }
+
+        // Compute Footprints
+        unsigned long long ellpack_bytes = total_ellpack_elements * bytes_per_element;
+        
+        // CSR includes overhead for the structural row pointer array (num_rows + 1)
+        unsigned long long csr_bytes = (total_csr_elements * bytes_per_element) + 
+                                       ((num_rows + 1) * bytes_per_ptr);
+
+        unsigned long long total_bytes = ellpack_bytes + csr_bytes;
+
+        // Capture configuration optimizing total memory overhead
+        if (total_bytes < min_total_bytes) {
+            min_total_bytes = total_bytes;
+            best_K = K;
+        }
+    }
+
+    return best_K;
+}
+
+void get_local_chunk(long int n_points, int* local_size, 
+                     int* local_start) {
+    int world_size, world_rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+
+    int base_size = n_points / world_size;
+    int remainder = n_points % world_size;
+
+    // 1. Calculate local size
+    if (world_rank < remainder) {
+        *local_size = base_size + 1;
+    } else {
+        *local_size = base_size;
+    }
+
+    // 2. Calculate local start
+    if (world_rank < remainder) {
+        *local_start = world_rank * (*local_size);
+    } else {
+        *local_start = world_rank * base_size + remainder;
+    }
+}
 
 double arithmetic_mean(const double *v, int len) {
 
